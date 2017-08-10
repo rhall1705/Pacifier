@@ -16,5 +16,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         MainActivityExtras.bind(this);
+
+        Bundle bundle = new Bundle();
     }
 }

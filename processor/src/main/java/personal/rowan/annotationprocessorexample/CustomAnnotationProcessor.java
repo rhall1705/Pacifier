@@ -23,10 +23,9 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
-import javax.lang.model.type.TypeKind;
 import javax.lang.model.util.Elements;
 
-@SupportedAnnotationTypes("personal.rowan.annotationprocessorexample.Extra")
+@SupportedAnnotationTypes({"personal.rowan.annotationprocessorexample.Extra", "personal.rowan.annotationprocessorexample.Argument"})
 @SupportedSourceVersion(SourceVersion.RELEASE_7)
 public class CustomAnnotationProcessor extends AbstractProcessor {
 
@@ -46,7 +45,12 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+        processActivityExtras(roundEnv);
+        processFragmentArgs(roundEnv);
+        return true;
+    }
 
+    private void processActivityExtras(RoundEnvironment roundEnv) {
         Map<Element, List<Element>> activityExtraMap = new HashMap<>();
         for (Element element : roundEnv.getElementsAnnotatedWith(Extra.class)) {
             Element activity = element.getEnclosingElement();
@@ -64,7 +68,7 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
             ClassName activityClass = ClassName.get(packageName, activityName);
 
             List<Element> extras = activityExtraMap.get(activity);
-            MethodSpec.Builder newIntentBuilder = MethodSpec.methodBuilder("new" + activityName + "Intent")
+            MethodSpec.Builder newIntentBuilder = MethodSpec.methodBuilder("newIntent")
                     .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
                     .returns(classIntent)
                     .addParameter(classContext, "context")
@@ -86,7 +90,7 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
 
             for (Element extra : extras) {
                 String extraName = extra.getSimpleName().toString();
-                setterBuilder.addStatement("activity.$L = extras." + bundleGetter(extra) + "($S)", extraName, extraName);
+                setterBuilder.addStatement("activity.$L = extras." + bundleModifier(extra, true) + "($S)", extraName, extraName);
             }
 
             TypeSpec factoryClass = TypeSpec.classBuilder(activityName + "Extras")
@@ -102,22 +106,77 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
                 e.printStackTrace();
             }
         }
-
-        return true;
     }
 
-    private String bundleGetter(Element element) {
+    private void processFragmentArgs(RoundEnvironment roundEnv) {
+        Map<Element, List<Element>> fragmentArgMap = new HashMap<>();
+        for (Element element : roundEnv.getElementsAnnotatedWith(Argument.class)) {
+            Element fragment = element.getEnclosingElement();
+            if (fragmentArgMap.containsKey(fragment)) {
+                fragmentArgMap.get(fragment).add(element);
+            } else {
+                List<Element> argList = new ArrayList<>();
+                argList.add(element);
+                fragmentArgMap.put(fragment, argList);
+            }
+        }
+        for (Element fragment : fragmentArgMap.keySet()) {
+            String fragmentName = fragment.getSimpleName().toString();
+            String packageName = elements.getPackageOf(fragment).getQualifiedName().toString();
+            ClassName fragmentClass = ClassName.get(packageName, fragmentName);
+
+            List<Element> args = fragmentArgMap.get(fragment);
+            MethodSpec.Builder argsBuilder = MethodSpec.methodBuilder("args")
+                    .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                    .returns(classBundle)
+                    .addStatement("Bundle args = new $T()", classBundle);
+
+            for (Element arg : args) {
+                String argName = arg.getSimpleName().toString();
+                argsBuilder.addParameter(ClassName.get(arg.asType()), argName)
+                        .addStatement("args." + bundleModifier(arg, false) + "($S, $L)", argName, argName);
+            }
+
+            MethodSpec argsMethod = argsBuilder.addStatement("return args").build();
+
+            MethodSpec.Builder setterBuilder = MethodSpec.methodBuilder("bind")
+                    .addModifiers(Modifier.STATIC)
+                    .returns(TypeName.VOID)
+                    .addParameter(fragmentClass, "fragment")
+                    .addStatement("$T args = fragment.getArguments()", classBundle);
+
+            for (Element arg : args) {
+                String argName = arg.getSimpleName().toString();
+                setterBuilder.addStatement("fragment.$L = args." + bundleModifier(arg, true) + "($S)", argName, argName);
+            }
+
+            TypeSpec factoryClass = TypeSpec.classBuilder(fragmentName + "Arguments")
+                    .addModifiers(Modifier.PUBLIC)
+                    .addMethod(argsMethod)
+                    .addMethod(setterBuilder.build())
+                    .build();
+
+            JavaFile javaFile = JavaFile.builder(packageName, factoryClass).build();
+            try {
+                javaFile.writeTo(filer);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private static String bundleModifier(Element element, boolean get) {
+        String prefix = get ? "get" : "put";
         TypeName typeName = ClassName.get(element.asType());
         String typeString = typeName.toString();
         if (typeName.isPrimitive()) {
-            return "get" + typeString.substring(0, 1).toUpperCase() + typeString.substring(1);
+            return prefix + typeString.substring(0, 1).toUpperCase() + typeString.substring(1);
         } else if ("java.lang.String".equals(typeString)) {
-            return "getString";
+            return prefix + "String";
         } else {
             // should there be a better base case for this?
-            return "getSerializable";
+            return prefix + "Serializable";
         }
-
     }
 
 }
