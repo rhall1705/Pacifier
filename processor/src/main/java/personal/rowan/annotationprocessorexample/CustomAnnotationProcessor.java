@@ -139,6 +139,24 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
 
             MethodSpec argsMethod = argsBuilder.addStatement("return args").build();
 
+            MethodSpec.Builder newInstanceBuilder = MethodSpec.methodBuilder("newInstance")
+                    .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                    .returns(fragmentClass)
+                    .addStatement("$T fragment = new $T()", fragmentClass, fragmentClass);
+
+            String argsString = "";
+            for (Element arg : args) {
+                String argName = arg.getSimpleName().toString();
+                newInstanceBuilder.addParameter(ClassName.get(arg.asType()), argName);
+                argsString += argName + ", ";
+            }
+            if (!argsString.isEmpty()) {
+                argsString = argsString.substring(0, argsString.length() - 2);
+            }
+            MethodSpec newInstanceMethod = newInstanceBuilder.addStatement("fragment.setArguments(args(" + argsString + "))")
+                    .addStatement("return fragment")
+                    .build();
+
             MethodSpec.Builder setterBuilder = MethodSpec.methodBuilder("bind")
                     .addModifiers(Modifier.STATIC)
                     .returns(TypeName.VOID)
@@ -153,6 +171,7 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
             TypeSpec factoryClass = TypeSpec.classBuilder(fragmentName + "Arguments")
                     .addModifiers(Modifier.PUBLIC)
                     .addMethod(argsMethod)
+                    .addMethod(newInstanceMethod)
                     .addMethod(setterBuilder.build())
                     .build();
 
@@ -171,7 +190,7 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
         String typeString = typeName.toString();
         if (typeName.isPrimitive()) {
             return prefix + typeString.substring(0, 1).toUpperCase() + typeString.substring(1);
-        } else if ("java.lang.String".equals(typeString)) {
+        } else if ("java.lang.String" .equals(typeString)) {
             return prefix + "String";
         } else {
             // should there be a better base case for this?
