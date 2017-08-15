@@ -2,7 +2,7 @@ package personal.rowan.annotationprocessorexample;
 
 public @interface Argument {
 
-    public static final int DEFAULT_PATH = -1;
+    String DEFAULT_PATH = "";
 
-    int path() default DEFAULT_PATH;
+    String path() default DEFAULT_PATH;
 }

@@ -109,14 +109,14 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
     }
 
     private void processFragmentArgs(RoundEnvironment roundEnv) {
-        Map<Element, List<Pair<Element, Integer>>> fragmentArgMap = new HashMap<>();
+        Map<Element, List<Pair<Element, String>>> fragmentArgMap = new HashMap<>();
         for (Element element : roundEnv.getElementsAnnotatedWith(Argument.class)) {
             Element fragment = element.getEnclosingElement();
-            int path = element.getAnnotation(Argument.class).path();
+            String path = element.getAnnotation(Argument.class).path();
             if (fragmentArgMap.containsKey(fragment)) {
                 fragmentArgMap.get(fragment).add(Pair.create(element, path));
             } else {
-                List<Pair<Element, Integer>> argList = new ArrayList<>();
+                List<Pair<Element, String>> argList = new ArrayList<>();
                 argList.add(Pair.create(element, path));
                 fragmentArgMap.put(fragment, argList);
             }
@@ -126,16 +126,16 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
             String packageName = elements.getPackageOf(fragment).getQualifiedName().toString();
             ClassName fragmentClass = ClassName.get(packageName, fragmentName);
 
-            List<Pair<Element, Integer>> argPaths = fragmentArgMap.get(fragment);
-            Map<Integer, List<Element>> pathArgMap = new HashMap<>();
+            List<Pair<Element, String>> argPaths = fragmentArgMap.get(fragment);
+            Map<String, List<Element>> pathArgMap = new HashMap<>();
             pathArgMap.put(Argument.DEFAULT_PATH, new ArrayList<Element>());
             List<Element> defaultArgs = new ArrayList<>();
             // Used to bind arguments to members
             List<Element> allArgs = new ArrayList<>();
-            for (Pair<Element, Integer> argPath : argPaths) {
-                Integer path = argPath.second();
+            for (Pair<Element, String> argPath : argPaths) {
+                String path = argPath.second();
                 Element arg = argPath.first();
-                if (path == Argument.DEFAULT_PATH) {
+                if (Argument.DEFAULT_PATH.equals(path)) {
                     defaultArgs.add(arg);
                 } else {
                     if (pathArgMap.containsKey(path)) {
@@ -148,21 +148,22 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
                 }
                 allArgs.add(arg);
             }
-            for (Integer path : pathArgMap.keySet()) {
+            for (String path : pathArgMap.keySet()) {
                 if (!pathArgMap.containsKey(path)) {
                     pathArgMap.put(path, new ArrayList<Element>());
                 }
-                for (Element defaultArg : defaultArgs) {
-                    pathArgMap.get(path).add(defaultArg);
-                }
+                List<Element> fullArgs = new ArrayList<>();
+                fullArgs.addAll(defaultArgs);
+                fullArgs.addAll(pathArgMap.get(path));
+                pathArgMap.put(path, fullArgs);
             }
 
             List<MethodSpec> argsMethods = new ArrayList<>();
             List<MethodSpec> newInstanceMethods = new ArrayList<>();
-            for (Integer path : pathArgMap.keySet()) {
+            for (String path : pathArgMap.keySet()) {
                 List<Element> args = pathArgMap.get(path);
 
-                String argsMethodName = "args" + (path >= 0 ? path : "");
+                String argsMethodName = "args" + path;
                 MethodSpec.Builder argsBuilder = MethodSpec.methodBuilder(argsMethodName)
                         .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
                         .returns(classBundle)
@@ -177,7 +178,7 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
                 MethodSpec argsMethod = argsBuilder.addStatement("return args").build();
                 argsMethods.add(argsMethod);
 
-                String newInstanceMethodName = "newInstance" + (path >= 0 ? path : "");
+                String newInstanceMethodName = "newInstance" + path;
                 MethodSpec.Builder newInstanceBuilder = MethodSpec.methodBuilder(newInstanceMethodName)
                         .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
                         .returns(fragmentClass)

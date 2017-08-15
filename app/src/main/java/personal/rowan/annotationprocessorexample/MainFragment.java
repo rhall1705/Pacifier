@@ -6,13 +6,16 @@ import android.support.v4.app.Fragment;
 public class MainFragment extends Fragment {
 
     @Argument
-    String someFragmentArg;
+    String stringArgument;
 
     @Argument
-    double someDoubleArg;
+    double doubleArgument;
 
-    @Argument(path=1)
-    int someInt;
+    @Argument(path="SecondPath")
+    int integerArgument;
+
+    @Argument(path="ThirdPath")
+    String anotherStringArgument;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
