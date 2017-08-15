@@ -1,4 +1,4 @@
-package personal.rowan.annotationprocessorexample;
+package personal.rowan.pacifier;
 
 public @interface Argument {
 

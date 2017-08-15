@@ -1,4 +1,4 @@
-package personal.rowan.annotationprocessorexample.object;
+package personal.rowan.pacifier.object;
 
 import java.io.Serializable;
 

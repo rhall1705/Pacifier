@@ -1,4 +1,4 @@
-package personal.rowan.annotationprocessorexample;
+package personal.rowan.pacifier;
 
 /**
  * Created by Rowan Hall

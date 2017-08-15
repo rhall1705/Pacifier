@@ -1,4 +1,4 @@
-package personal.rowan.annotationprocessorexample;
+package personal.rowan.pacifier;
 
 import com.squareup.javapoet.ClassName;
 import com.squareup.javapoet.JavaFile;
@@ -26,9 +26,9 @@ import javax.lang.model.element.Modifier;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.util.Elements;
 
-@SupportedAnnotationTypes({"personal.rowan.annotationprocessorexample.Extra", "personal.rowan.annotationprocessorexample.Argument"})
+@SupportedAnnotationTypes({"personal.rowan.pacifier.Extra", "personal.rowan.pacifier.Argument"})
 @SupportedSourceVersion(SourceVersion.RELEASE_7)
-public class CustomAnnotationProcessor extends AbstractProcessor {
+public class PacifierProcessor extends AbstractProcessor {
 
     private static final ClassName classIntent = ClassName.get("android.content", "Intent");
     private static final ClassName classContext = ClassName.get("android.content", "Context");

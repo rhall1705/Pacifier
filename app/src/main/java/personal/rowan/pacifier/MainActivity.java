@@ -1,7 +1,9 @@
-package personal.rowan.annotationprocessorexample;
+package personal.rowan.pacifier;
 
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+
+import personal.rowan.pacifier.Extra;
 
 public class MainActivity extends AppCompatActivity {
 

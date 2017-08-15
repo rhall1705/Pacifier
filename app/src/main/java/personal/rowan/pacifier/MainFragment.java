@@ -1,9 +1,9 @@
-package personal.rowan.annotationprocessorexample;
+package personal.rowan.pacifier;
 
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 
-import personal.rowan.annotationprocessorexample.object.SomeObject;
+import personal.rowan.pacifier.object.SomeObject;
 
 public class MainFragment extends Fragment {
 
