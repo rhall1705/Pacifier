@@ -9,6 +9,7 @@ import com.squareup.javapoet.TypeSpec;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -112,13 +113,16 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
         Map<Element, List<Pair<Element, String>>> fragmentArgMap = new HashMap<>();
         for (Element element : roundEnv.getElementsAnnotatedWith(Argument.class)) {
             Element fragment = element.getEnclosingElement();
-            String path = element.getAnnotation(Argument.class).path();
-            if (fragmentArgMap.containsKey(fragment)) {
-                fragmentArgMap.get(fragment).add(Pair.create(element, path));
-            } else {
-                List<Pair<Element, String>> argList = new ArrayList<>();
-                argList.add(Pair.create(element, path));
-                fragmentArgMap.put(fragment, argList);
+            Argument annotation = element.getAnnotation(Argument.class);
+            String[] paths = annotation.paths().length <= 0 ? new String[]{ annotation.path() } : annotation.paths();
+            for (String path : paths) {
+                if (fragmentArgMap.containsKey(fragment)) {
+                    fragmentArgMap.get(fragment).add(Pair.create(element, path));
+                } else {
+                    List<Pair<Element, String>> argList = new ArrayList<>();
+                    argList.add(Pair.create(element, path));
+                    fragmentArgMap.put(fragment, argList);
+                }
             }
         }
         for (Element fragment : fragmentArgMap.keySet()) {
@@ -131,7 +135,7 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
             pathArgMap.put(Argument.DEFAULT_PATH, new ArrayList<Element>());
             List<Element> defaultArgs = new ArrayList<>();
             // Used to bind arguments to members
-            List<Element> allArgs = new ArrayList<>();
+            Set<Element> allArgs = new HashSet<>();
             for (Pair<Element, String> argPath : argPaths) {
                 String path = argPath.second();
                 Element arg = argPath.first();

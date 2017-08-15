@@ -14,8 +14,14 @@ public class MainFragment extends Fragment {
     @Argument(path="SecondPath")
     int integerArgument;
 
+    @Argument(paths={"SecondPath", "ThirdPath"})
+    int anotherIntArgument;
+
     @Argument(path="ThirdPath")
     String anotherStringArgument;
+
+    @Argument(path="FourthPath")
+    double anotherDoubleArgument;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
