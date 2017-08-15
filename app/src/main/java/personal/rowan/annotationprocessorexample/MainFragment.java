@@ -11,6 +11,9 @@ public class MainFragment extends Fragment {
     @Argument
     double someDoubleArg;
 
+    @Argument(path=1)
+    int someInt;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);

@@ -109,14 +109,15 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
     }
 
     private void processFragmentArgs(RoundEnvironment roundEnv) {
-        Map<Element, List<Element>> fragmentArgMap = new HashMap<>();
+        Map<Element, List<Pair<Element, Integer>>> fragmentArgMap = new HashMap<>();
         for (Element element : roundEnv.getElementsAnnotatedWith(Argument.class)) {
             Element fragment = element.getEnclosingElement();
+            int path = element.getAnnotation(Argument.class).path();
             if (fragmentArgMap.containsKey(fragment)) {
-                fragmentArgMap.get(fragment).add(element);
+                fragmentArgMap.get(fragment).add(Pair.create(element, path));
             } else {
-                List<Element> argList = new ArrayList<>();
-                argList.add(element);
+                List<Pair<Element, Integer>> argList = new ArrayList<>();
+                argList.add(Pair.create(element, path));
                 fragmentArgMap.put(fragment, argList);
             }
         }
@@ -125,37 +126,77 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
             String packageName = elements.getPackageOf(fragment).getQualifiedName().toString();
             ClassName fragmentClass = ClassName.get(packageName, fragmentName);
 
-            List<Element> args = fragmentArgMap.get(fragment);
-            MethodSpec.Builder argsBuilder = MethodSpec.methodBuilder("args")
-                    .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-                    .returns(classBundle)
-                    .addStatement("Bundle args = new $T()", classBundle);
-
-            for (Element arg : args) {
-                String argName = arg.getSimpleName().toString();
-                argsBuilder.addParameter(ClassName.get(arg.asType()), argName)
-                        .addStatement("args." + bundleModifier(arg, false) + "($S, $L)", argName, argName);
+            List<Pair<Element, Integer>> argPaths = fragmentArgMap.get(fragment);
+            Map<Integer, List<Element>> pathArgMap = new HashMap<>();
+            pathArgMap.put(Argument.DEFAULT_PATH, new ArrayList<Element>());
+            List<Element> defaultArgs = new ArrayList<>();
+            // Used to bind arguments to members
+            List<Element> allArgs = new ArrayList<>();
+            for (Pair<Element, Integer> argPath : argPaths) {
+                Integer path = argPath.second();
+                Element arg = argPath.first();
+                if (path == Argument.DEFAULT_PATH) {
+                    defaultArgs.add(arg);
+                } else {
+                    if (pathArgMap.containsKey(path)) {
+                        pathArgMap.get(path).add(arg);
+                    } else {
+                        List<Element> argList = new ArrayList<>();
+                        argList.add(arg);
+                        pathArgMap.put(path, argList);
+                    }
+                }
+                allArgs.add(arg);
+            }
+            for (Integer path : pathArgMap.keySet()) {
+                if (!pathArgMap.containsKey(path)) {
+                    pathArgMap.put(path, new ArrayList<Element>());
+                }
+                for (Element defaultArg : defaultArgs) {
+                    pathArgMap.get(path).add(defaultArg);
+                }
             }
 
-            MethodSpec argsMethod = argsBuilder.addStatement("return args").build();
+            List<MethodSpec> argsMethods = new ArrayList<>();
+            List<MethodSpec> newInstanceMethods = new ArrayList<>();
+            for (Integer path : pathArgMap.keySet()) {
+                List<Element> args = pathArgMap.get(path);
 
-            MethodSpec.Builder newInstanceBuilder = MethodSpec.methodBuilder("newInstance")
-                    .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-                    .returns(fragmentClass)
-                    .addStatement("$T fragment = new $T()", fragmentClass, fragmentClass);
+                String argsMethodName = "args" + (path >= 0 ? path : "");
+                MethodSpec.Builder argsBuilder = MethodSpec.methodBuilder(argsMethodName)
+                        .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                        .returns(classBundle)
+                        .addStatement("Bundle args = new $T()", classBundle);
 
-            String argsString = "";
-            for (Element arg : args) {
-                String argName = arg.getSimpleName().toString();
-                newInstanceBuilder.addParameter(ClassName.get(arg.asType()), argName);
-                argsString += argName + ", ";
+                for (Element arg : args) {
+                    String argName = arg.getSimpleName().toString();
+                    argsBuilder.addParameter(ClassName.get(arg.asType()), argName)
+                            .addStatement("args." + bundleModifier(arg, false) + "($S, $L)", argName, argName);
+                }
+
+                MethodSpec argsMethod = argsBuilder.addStatement("return args").build();
+                argsMethods.add(argsMethod);
+
+                String newInstanceMethodName = "newInstance" + (path >= 0 ? path : "");
+                MethodSpec.Builder newInstanceBuilder = MethodSpec.methodBuilder(newInstanceMethodName)
+                        .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                        .returns(fragmentClass)
+                        .addStatement("$T fragment = new $T()", fragmentClass, fragmentClass);
+
+                String argsString = "";
+                for (Element arg : args) {
+                    String argName = arg.getSimpleName().toString();
+                    newInstanceBuilder.addParameter(ClassName.get(arg.asType()), argName);
+                    argsString += argName + ", ";
+                }
+                if (!argsString.isEmpty()) {
+                    argsString = argsString.substring(0, argsString.length() - 2);
+                }
+                MethodSpec newInstanceMethod = newInstanceBuilder.addStatement("fragment.setArguments(" + argsMethodName + "(" + argsString + "))")
+                        .addStatement("return fragment")
+                        .build();
+                newInstanceMethods.add(newInstanceMethod);
             }
-            if (!argsString.isEmpty()) {
-                argsString = argsString.substring(0, argsString.length() - 2);
-            }
-            MethodSpec newInstanceMethod = newInstanceBuilder.addStatement("fragment.setArguments(args(" + argsString + "))")
-                    .addStatement("return fragment")
-                    .build();
 
             MethodSpec.Builder setterBuilder = MethodSpec.methodBuilder("bind")
                     .addModifiers(Modifier.STATIC)
@@ -163,15 +204,21 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
                     .addParameter(fragmentClass, "fragment")
                     .addStatement("$T args = fragment.getArguments()", classBundle);
 
-            for (Element arg : args) {
+            for (Element arg : allArgs) {
                 String argName = arg.getSimpleName().toString();
                 setterBuilder.addStatement("fragment.$L = args." + bundleModifier(arg, true) + "($S)", argName, argName);
             }
 
-            TypeSpec factoryClass = TypeSpec.classBuilder(fragmentName + "Arguments")
-                    .addModifiers(Modifier.PUBLIC)
-                    .addMethod(argsMethod)
-                    .addMethod(newInstanceMethod)
+            TypeSpec.Builder factoryClassBuilder = TypeSpec.classBuilder(fragmentName + "Arguments")
+                    .addModifiers(Modifier.PUBLIC);
+
+            for (MethodSpec argsMethod : argsMethods) {
+                factoryClassBuilder.addMethod(argsMethod);
+            }
+            for (MethodSpec newInstanceMethod : newInstanceMethods) {
+                factoryClassBuilder.addMethod(newInstanceMethod);
+            }
+            TypeSpec factoryClass = factoryClassBuilder
                     .addMethod(setterBuilder.build())
                     .build();
 
