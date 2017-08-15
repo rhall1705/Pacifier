@@ -211,7 +211,8 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
 
             for (Element arg : allArgs) {
                 String argName = arg.getSimpleName().toString();
-                setterBuilder.addStatement("fragment.$L = args." + bundleModifier(arg, true) + "($S)", argName, argName);
+                String getter = bundleModifier(arg, true);
+                setterBuilder.addStatement("fragment.$L = " + castString(arg, getter) + "args." + getter + "($S)", argName, argName);
             }
 
             TypeSpec.Builder factoryClassBuilder = TypeSpec.classBuilder(fragmentName + "Arguments")
@@ -242,11 +243,19 @@ public class CustomAnnotationProcessor extends AbstractProcessor {
         String typeString = typeName.toString();
         if (typeName.isPrimitive()) {
             return prefix + typeString.substring(0, 1).toUpperCase() + typeString.substring(1);
-        } else if ("java.lang.String" .equals(typeString)) {
+        } else if ("java.lang.String".equals(typeString)) {
             return prefix + "String";
         } else {
             // should there be a better base case for this?
             return prefix + "Serializable";
+        }
+    }
+
+    private static String castString(Element element, String getter) {
+        if("getSerializable".equals(getter)) {
+            return "(" + ClassName.get(element.asType()).toString() + ") ";
+        } else {
+            return "";
         }
     }
 

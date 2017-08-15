@@ -3,6 +3,8 @@ package personal.rowan.annotationprocessorexample;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 
+import personal.rowan.annotationprocessorexample.object.SomeObject;
+
 public class MainFragment extends Fragment {
 
     @Argument
@@ -21,7 +23,7 @@ public class MainFragment extends Fragment {
     String anotherStringArgument;
 
     @Argument(path="FourthPath")
-    double anotherDoubleArgument;
+    SomeObject objectArgument;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
