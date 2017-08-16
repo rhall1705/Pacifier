@@ -52,15 +52,19 @@ public class PacifierProcessor extends AbstractProcessor {
     }
 
     private void processActivityExtras(RoundEnvironment roundEnv) {
-        Map<Element, List<Element>> activityExtraMap = new HashMap<>();
+        Map<Element, List<Pair<Element, String>>> activityExtraMap = new HashMap<>();
         for (Element element : roundEnv.getElementsAnnotatedWith(Extra.class)) {
             Element activity = element.getEnclosingElement();
-            if (activityExtraMap.containsKey(activity)) {
-                activityExtraMap.get(activity).add(element);
-            } else {
-                List<Element> extraList = new ArrayList<>();
-                extraList.add(element);
-                activityExtraMap.put(activity, extraList);
+            Extra annotation = element.getAnnotation(Extra.class);
+            String[] paths = annotation.paths().length <= 0 ? new String[]{ annotation.path() } : annotation.paths();
+            for (String path : paths) {
+                if (activityExtraMap.containsKey(activity)) {
+                    activityExtraMap.get(activity).add(Pair.create(element, path));
+                } else {
+                    List<Pair<Element, String>> extraList = new ArrayList<>();
+                    extraList.add(Pair.create(element, path));
+                    activityExtraMap.put(activity, extraList);
+                }
             }
         }
         for (Element activity : activityExtraMap.keySet()) {
@@ -68,20 +72,57 @@ public class PacifierProcessor extends AbstractProcessor {
             String packageName = elements.getPackageOf(activity).getQualifiedName().toString();
             ClassName activityClass = ClassName.get(packageName, activityName);
 
-            List<Element> extras = activityExtraMap.get(activity);
-            MethodSpec.Builder newIntentBuilder = MethodSpec.methodBuilder("newIntent")
-                    .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-                    .returns(classIntent)
-                    .addParameter(classContext, "context")
-                    .addStatement("Intent intent = new $T($L, $L)", classIntent, "context", activityClass + ".class");
-
-            for (Element extra : extras) {
-                String extraName = extra.getSimpleName().toString();
-                newIntentBuilder.addParameter(ClassName.get(extra.asType()), extraName)
-                        .addStatement("intent.putExtra($S, $L)", extraName, extraName);
+            List<Pair<Element, String>> extraPaths = activityExtraMap.get(activity);
+            Map<String, List<Element>> pathExtraMap = new HashMap<>();
+            pathExtraMap.put(Extra.DEFAULT_PATH, new ArrayList<Element>());
+            List<Element> defaultExtras = new ArrayList<>();
+            // Used to bind extras to members
+            Set<Element> allExtras = new HashSet<>();
+            for (Pair<Element, String> argPath : extraPaths) {
+                String path = argPath.second();
+                Element extra = argPath.first();
+                if (Extra.DEFAULT_PATH.equals(path)) {
+                    defaultExtras.add(extra);
+                } else {
+                    if (pathExtraMap.containsKey(path)) {
+                        pathExtraMap.get(path).add(extra);
+                    } else {
+                        List<Element> extraList = new ArrayList<>();
+                        extraList.add(extra);
+                        pathExtraMap.put(path, extraList);
+                    }
+                }
+                allExtras.add(extra);
+            }
+            for (String path : pathExtraMap.keySet()) {
+                if (!pathExtraMap.containsKey(path)) {
+                    pathExtraMap.put(path, new ArrayList<Element>());
+                }
+                List<Element> fullExtras = new ArrayList<>();
+                fullExtras.addAll(defaultExtras);
+                fullExtras.addAll(pathExtraMap.get(path));
+                pathExtraMap.put(path, fullExtras);
             }
 
-            MethodSpec newIntentMethod = newIntentBuilder.addStatement("return intent").build();
+            List<MethodSpec> newIntentMethods = new ArrayList<>();
+            for (String path : pathExtraMap.keySet()) {
+                List<Element> extras = pathExtraMap.get(path);
+
+                MethodSpec.Builder newIntentBuilder = MethodSpec.methodBuilder("newIntent")
+                        .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                        .returns(classIntent)
+                        .addParameter(classContext, "context")
+                        .addStatement("Intent intent = new $T($L, $L)", classIntent, "context", activityClass + ".class");
+
+                for (Element extra : extras) {
+                    String extraName = extra.getSimpleName().toString();
+                    newIntentBuilder.addParameter(ClassName.get(extra.asType()), extraName)
+                            .addStatement("intent.putExtra($S, $L)", extraName, extraName);
+                }
+
+                MethodSpec newIntentMethod = newIntentBuilder.addStatement("return intent").build();
+                newIntentMethods.add(newIntentMethod);
+            }
 
             MethodSpec.Builder setterBuilder = MethodSpec.methodBuilder("bind")
                     .addModifiers(Modifier.STATIC)
@@ -89,14 +130,19 @@ public class PacifierProcessor extends AbstractProcessor {
                     .addParameter(activityClass, "activity")
                     .addStatement("$T extras = activity.getIntent().getExtras()", classBundle);
 
-            for (Element extra : extras) {
+            for (Element extra : allExtras) {
                 String extraName = extra.getSimpleName().toString();
-                setterBuilder.addStatement("activity.$L = extras." + bundleModifier(extra, true) + "($S)", extraName, extraName);
+                String getter = bundleModifier(extra, true);
+                setterBuilder.addStatement("activity.$L = " + castString(extra, getter) + "extras." + getter + "($S)", extraName, extraName);
             }
 
-            TypeSpec factoryClass = TypeSpec.classBuilder(activityName + "Extras")
-                    .addModifiers(Modifier.PUBLIC)
-                    .addMethod(newIntentMethod)
+            TypeSpec.Builder factoryClassBuilder = TypeSpec.classBuilder(activityName + "Extras")
+                    .addModifiers(Modifier.PUBLIC);
+
+            for (MethodSpec newInstanceMethod : newIntentMethods) {
+                factoryClassBuilder.addMethod(newInstanceMethod);
+            }
+            TypeSpec factoryClass = factoryClassBuilder
                     .addMethod(setterBuilder.build())
                     .build();
 
