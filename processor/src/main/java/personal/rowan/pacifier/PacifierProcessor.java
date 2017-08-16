@@ -133,7 +133,7 @@ public class PacifierProcessor extends AbstractProcessor {
             for (Element extra : allExtras) {
                 String extraName = extra.getSimpleName().toString();
                 String getter = bundleModifier(extra, true);
-                setterBuilder.addStatement("activity.$L = " + castString(extra, getter) + "extras." + getter + "($S)", extraName, extraName);
+                setterBuilder.addStatement("if (extras.containsKey($S)) activity.$L = " + castString(extra, getter) + "extras." + getter + "($S)", extraName, extraName, extraName);
             }
 
             TypeSpec.Builder factoryClassBuilder = TypeSpec.classBuilder(activityName + "Extras")
@@ -258,7 +258,7 @@ public class PacifierProcessor extends AbstractProcessor {
             for (Element arg : allArgs) {
                 String argName = arg.getSimpleName().toString();
                 String getter = bundleModifier(arg, true);
-                setterBuilder.addStatement("fragment.$L = " + castString(arg, getter) + "args." + getter + "($S)", argName, argName);
+                setterBuilder.addStatement("if (args.containsKey($S)) fragment.$L = " + castString(arg, getter) + "args." + getter + "($S)", argName, argName, argName);
             }
 
             TypeSpec.Builder factoryClassBuilder = TypeSpec.classBuilder(fragmentName + "Arguments")
