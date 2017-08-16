@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Pacifier Demo</string>
+
+    <string name="hint_string">Enter string</string>
+    <string name="hint_integer">Enter integer</string>
+    <string name="button_go">Go</string>
 </resources>
