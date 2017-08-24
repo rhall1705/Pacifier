@@ -3,6 +3,8 @@ package personal.rowan.pacifier;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 
+import pacifier.Pacifier;
+
 /**
  * Created by Rowan Hall
  */
@@ -19,7 +21,7 @@ public class SecondActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_second);
-        SecondActivityExtras.bind(this);
+        Pacifier.bind(this);
 
         getSupportFragmentManager()
                 .beginTransaction()

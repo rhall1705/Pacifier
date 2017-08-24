@@ -46,18 +46,64 @@ public class PacifierProcessor extends AbstractProcessor {
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
-        processActivityExtras(roundEnv);
-        processFragmentArgs(roundEnv);
+        List<Pair<String, ClassName>> activityPackagesAndClasses = processActivityExtras(roundEnv);
+        List<Pair<String, ClassName>> fragmentPackagesAndClasses = processFragmentArgs(roundEnv);
+        createUniversalClass(activityPackagesAndClasses, fragmentPackagesAndClasses);
         return true;
     }
 
-    private void processActivityExtras(RoundEnvironment roundEnv) {
+    private void createUniversalClass(
+            List<Pair<String, ClassName>> activityPackagesAndClasses,
+            List<Pair<String, ClassName>> fragmentPackagesAndClasses) {
+
+        TypeSpec.Builder universalClassBuilder =
+                TypeSpec.classBuilder("Pacifier").addModifiers(Modifier.PUBLIC);
+
+        for (Pair<String, ClassName> activityPackageClassPair : activityPackagesAndClasses) {
+            ClassName activityClass = activityPackageClassPair.second();
+            ClassName factoryClass =
+                    ClassName.get(activityPackageClassPair.first(), activityClass.simpleName() + "Extras");
+
+            MethodSpec universalSetter =
+                    MethodSpec.methodBuilder("bind")
+                            .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                            .returns(TypeName.VOID)
+                            .addParameter(activityClass, "activity")
+                            .addStatement("$T.bind(activity)", factoryClass)
+                            .build();
+            universalClassBuilder.addMethod(universalSetter);
+        }
+
+        for (Pair<String, ClassName> fragmentPackageClassPair : fragmentPackagesAndClasses) {
+            ClassName fragmentClass = fragmentPackageClassPair.second();
+            ClassName factoryClass =
+                    ClassName.get(fragmentPackageClassPair.first(), fragmentClass.simpleName() + "Arguments");
+
+            MethodSpec universalSetter =
+                    MethodSpec.methodBuilder("bind")
+                            .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                            .returns(TypeName.VOID)
+                            .addParameter(fragmentClass, "fragment")
+                            .addStatement("$T.bind(fragment)", factoryClass)
+                            .build();
+            universalClassBuilder.addMethod(universalSetter);
+        }
+
+        JavaFile javaFile =
+                JavaFile.builder("pacifier", universalClassBuilder.build()).build();
+        try {
+            javaFile.writeTo(filer);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private List<Pair<String, ClassName>> processActivityExtras(RoundEnvironment roundEnv) {
         Map<Element, List<Pair<Element, String>>> activityExtraMap = new HashMap<>();
         for (Element element : roundEnv.getElementsAnnotatedWith(Extra.class)) {
             Element activity = element.getEnclosingElement();
             Extra annotation = element.getAnnotation(Extra.class);
-            String[] paths = annotation.paths().length <= 0 ? new String[]{ annotation.path() } : annotation.paths();
-            for (String path : paths) {
+            for (String path : annotation.value()) {
                 if (activityExtraMap.containsKey(activity)) {
                     activityExtraMap.get(activity).add(Pair.create(element, path));
                 } else {
@@ -67,10 +113,12 @@ public class PacifierProcessor extends AbstractProcessor {
                 }
             }
         }
+        List<Pair<String, ClassName>> activityPackagesAndClasses = new ArrayList<>();
         for (Element activity : activityExtraMap.keySet()) {
             String activityName = activity.getSimpleName().toString();
             String packageName = elements.getPackageOf(activity).getQualifiedName().toString();
             ClassName activityClass = ClassName.get(packageName, activityName);
+            activityPackagesAndClasses.add(Pair.create(packageName, activityClass));
 
             List<Pair<Element, String>> extraPaths = activityExtraMap.get(activity);
             Map<String, List<Element>> pathExtraMap = new HashMap<>();
@@ -108,15 +156,21 @@ public class PacifierProcessor extends AbstractProcessor {
             for (String path : pathExtraMap.keySet()) {
                 List<Element> extras = pathExtraMap.get(path);
 
-                MethodSpec.Builder newIntentBuilder = MethodSpec.methodBuilder("newIntent")
-                        .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-                        .returns(classIntent)
-                        .addParameter(classContext, "context")
-                        .addStatement("Intent intent = new $T($L, $L)", classIntent, "context", activityClass + ".class");
+                MethodSpec.Builder newIntentBuilder =
+                        MethodSpec.methodBuilder("newIntent")
+                                .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                                .returns(classIntent)
+                                .addParameter(classContext, "context")
+                                .addStatement(
+                                        "Intent intent = new $T($L, $L)",
+                                        classIntent,
+                                        "context",
+                                        activityClass + ".class");
 
                 for (Element extra : extras) {
                     String extraName = extra.getSimpleName().toString();
-                    newIntentBuilder.addParameter(ClassName.get(extra.asType()), extraName)
+                    newIntentBuilder
+                            .addParameter(ClassName.get(extra.asType()), extraName)
                             .addStatement("intent.putExtra($S, $L)", extraName, extraName);
                 }
 
@@ -124,27 +178,34 @@ public class PacifierProcessor extends AbstractProcessor {
                 newIntentMethods.add(newIntentMethod);
             }
 
-            MethodSpec.Builder setterBuilder = MethodSpec.methodBuilder("bind")
-                    .addModifiers(Modifier.STATIC)
-                    .returns(TypeName.VOID)
-                    .addParameter(activityClass, "activity")
-                    .addStatement("$T extras = activity.getIntent().getExtras()", classBundle);
+            MethodSpec.Builder setterBuilder =
+                    MethodSpec.methodBuilder("bind")
+                            .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                            .returns(TypeName.VOID)
+                            .addParameter(activityClass, "activity")
+                            .addStatement("$T extras = activity.getIntent().getExtras()", classBundle);
 
             for (Element extra : allExtras) {
                 String extraName = extra.getSimpleName().toString();
                 String getter = bundleModifier(extra, true);
-                setterBuilder.addStatement("if (extras.containsKey($S)) activity.$L = " + castString(extra, getter) + "extras." + getter + "($S)", extraName, extraName, extraName);
+                setterBuilder.addStatement(
+                        "if (extras.containsKey($S)) activity.$L = "
+                                + castString(extra, getter)
+                                + "extras."
+                                + getter
+                                + "($S)",
+                        extraName,
+                        extraName,
+                        extraName);
             }
 
-            TypeSpec.Builder factoryClassBuilder = TypeSpec.classBuilder(activityName + "Extras")
-                    .addModifiers(Modifier.PUBLIC);
+            TypeSpec.Builder factoryClassBuilder =
+                    TypeSpec.classBuilder(activityName + "Extras").addModifiers(Modifier.PUBLIC);
 
             for (MethodSpec newInstanceMethod : newIntentMethods) {
                 factoryClassBuilder.addMethod(newInstanceMethod);
             }
-            TypeSpec factoryClass = factoryClassBuilder
-                    .addMethod(setterBuilder.build())
-                    .build();
+            TypeSpec factoryClass = factoryClassBuilder.addMethod(setterBuilder.build()).build();
 
             JavaFile javaFile = JavaFile.builder(packageName, factoryClass).build();
             try {
@@ -153,15 +214,15 @@ public class PacifierProcessor extends AbstractProcessor {
                 e.printStackTrace();
             }
         }
+        return activityPackagesAndClasses;
     }
 
-    private void processFragmentArgs(RoundEnvironment roundEnv) {
+    private List<Pair<String, ClassName>> processFragmentArgs(RoundEnvironment roundEnv) {
         Map<Element, List<Pair<Element, String>>> fragmentArgMap = new HashMap<>();
         for (Element element : roundEnv.getElementsAnnotatedWith(Argument.class)) {
             Element fragment = element.getEnclosingElement();
             Argument annotation = element.getAnnotation(Argument.class);
-            String[] paths = annotation.paths().length <= 0 ? new String[]{ annotation.path() } : annotation.paths();
-            for (String path : paths) {
+            for (String path : annotation.value()) {
                 if (fragmentArgMap.containsKey(fragment)) {
                     fragmentArgMap.get(fragment).add(Pair.create(element, path));
                 } else {
@@ -171,10 +232,13 @@ public class PacifierProcessor extends AbstractProcessor {
                 }
             }
         }
+
+        List<Pair<String, ClassName>> fragmentPackagesAndClasses = new ArrayList<>();
         for (Element fragment : fragmentArgMap.keySet()) {
             String fragmentName = fragment.getSimpleName().toString();
             String packageName = elements.getPackageOf(fragment).getQualifiedName().toString();
             ClassName fragmentClass = ClassName.get(packageName, fragmentName);
+            fragmentPackagesAndClasses.add(Pair.create(packageName, fragmentClass));
 
             List<Pair<Element, String>> argPaths = fragmentArgMap.get(fragment);
             Map<String, List<Element>> pathArgMap = new HashMap<>();
@@ -214,14 +278,16 @@ public class PacifierProcessor extends AbstractProcessor {
                 List<Element> args = pathArgMap.get(path);
 
                 String argsMethodName = "args" + path;
-                MethodSpec.Builder argsBuilder = MethodSpec.methodBuilder(argsMethodName)
-                        .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-                        .returns(classBundle)
-                        .addStatement("Bundle args = new $T()", classBundle);
+                MethodSpec.Builder argsBuilder =
+                        MethodSpec.methodBuilder(argsMethodName)
+                                .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                                .returns(classBundle)
+                                .addStatement("Bundle args = new $T()", classBundle);
 
                 for (Element arg : args) {
                     String argName = arg.getSimpleName().toString();
-                    argsBuilder.addParameter(ClassName.get(arg.asType()), argName)
+                    argsBuilder
+                            .addParameter(ClassName.get(arg.asType()), argName)
                             .addStatement("args." + bundleModifier(arg, false) + "($S, $L)", argName, argName);
                 }
 
@@ -229,10 +295,11 @@ public class PacifierProcessor extends AbstractProcessor {
                 argsMethods.add(argsMethod);
 
                 String newInstanceMethodName = "newInstance" + path;
-                MethodSpec.Builder newInstanceBuilder = MethodSpec.methodBuilder(newInstanceMethodName)
-                        .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
-                        .returns(fragmentClass)
-                        .addStatement("$T fragment = new $T()", fragmentClass, fragmentClass);
+                MethodSpec.Builder newInstanceBuilder =
+                        MethodSpec.methodBuilder(newInstanceMethodName)
+                                .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                                .returns(fragmentClass)
+                                .addStatement("$T fragment = new $T()", fragmentClass, fragmentClass);
 
                 String argsString = "";
                 for (Element arg : args) {
@@ -243,26 +310,37 @@ public class PacifierProcessor extends AbstractProcessor {
                 if (!argsString.isEmpty()) {
                     argsString = argsString.substring(0, argsString.length() - 2);
                 }
-                MethodSpec newInstanceMethod = newInstanceBuilder.addStatement("fragment.setArguments(" + argsMethodName + "(" + argsString + "))")
-                        .addStatement("return fragment")
-                        .build();
+                MethodSpec newInstanceMethod =
+                        newInstanceBuilder
+                                .addStatement("fragment.setArguments(" + argsMethodName + "(" + argsString + "))")
+                                .addStatement("return fragment")
+                                .build();
                 newInstanceMethods.add(newInstanceMethod);
             }
 
-            MethodSpec.Builder setterBuilder = MethodSpec.methodBuilder("bind")
-                    .addModifiers(Modifier.STATIC)
-                    .returns(TypeName.VOID)
-                    .addParameter(fragmentClass, "fragment")
-                    .addStatement("$T args = fragment.getArguments()", classBundle);
+            MethodSpec.Builder setterBuilder =
+                    MethodSpec.methodBuilder("bind")
+                            .addModifiers(Modifier.PUBLIC, Modifier.STATIC)
+                            .returns(TypeName.VOID)
+                            .addParameter(fragmentClass, "fragment")
+                            .addStatement("$T args = fragment.getArguments()", classBundle);
 
             for (Element arg : allArgs) {
                 String argName = arg.getSimpleName().toString();
                 String getter = bundleModifier(arg, true);
-                setterBuilder.addStatement("if (args.containsKey($S)) fragment.$L = " + castString(arg, getter) + "args." + getter + "($S)", argName, argName, argName);
+                setterBuilder.addStatement(
+                        "if (args.containsKey($S)) fragment.$L = "
+                                + castString(arg, getter)
+                                + "args."
+                                + getter
+                                + "($S)",
+                        argName,
+                        argName,
+                        argName);
             }
 
-            TypeSpec.Builder factoryClassBuilder = TypeSpec.classBuilder(fragmentName + "Arguments")
-                    .addModifiers(Modifier.PUBLIC);
+            TypeSpec.Builder factoryClassBuilder =
+                    TypeSpec.classBuilder(fragmentName + "Arguments").addModifiers(Modifier.PUBLIC);
 
             for (MethodSpec argsMethod : argsMethods) {
                 factoryClassBuilder.addMethod(argsMethod);
@@ -270,9 +348,7 @@ public class PacifierProcessor extends AbstractProcessor {
             for (MethodSpec newInstanceMethod : newInstanceMethods) {
                 factoryClassBuilder.addMethod(newInstanceMethod);
             }
-            TypeSpec factoryClass = factoryClassBuilder
-                    .addMethod(setterBuilder.build())
-                    .build();
+            TypeSpec factoryClass = factoryClassBuilder.addMethod(setterBuilder.build()).build();
 
             JavaFile javaFile = JavaFile.builder(packageName, factoryClass).build();
             try {
@@ -281,6 +357,8 @@ public class PacifierProcessor extends AbstractProcessor {
                 e.printStackTrace();
             }
         }
+
+        return fragmentPackagesAndClasses;
     }
 
     private static String bundleModifier(Element element, boolean get) {
@@ -298,7 +376,7 @@ public class PacifierProcessor extends AbstractProcessor {
     }
 
     private static String castString(Element element, String getter) {
-        if("getSerializable".equals(getter)) {
+        if ("getSerializable".equals(getter)) {
             return "(" + ClassName.get(element.asType()).toString() + ") ";
         } else {
             return "";

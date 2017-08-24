@@ -7,6 +7,8 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
+import pacifier.Pacifier;
+
 /**
  * Created by Rowan Hall
  */
@@ -22,7 +24,7 @@ public class FirstFragment extends Fragment {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        FirstFragmentArguments.bind(this);
+        Pacifier.bind(this);
     }
 
     @Override

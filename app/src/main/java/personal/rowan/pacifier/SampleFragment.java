@@ -3,6 +3,7 @@ package personal.rowan.pacifier;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 
+import pacifier.Pacifier;
 import personal.rowan.pacifier.object.SomeObject;
 
 /**
@@ -21,22 +22,22 @@ public class SampleFragment extends Fragment {
     @Argument
     double doubleArgument;
 
-    @Argument(path=SECOND_PATH)
+    @Argument(SECOND_PATH)
     int integerArgument;
 
-    @Argument(paths={SECOND_PATH, THIRD_PATH})
+    @Argument({SECOND_PATH, THIRD_PATH})
     int anotherIntArgument;
 
-    @Argument(path=THIRD_PATH)
+    @Argument(THIRD_PATH)
     String anotherStringArgument = "defaultValue";
 
-    @Argument(path=FOURTH_PATH)
+    @Argument(FOURTH_PATH)
     SomeObject objectArgument;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        SampleFragmentArguments.bind(this);
+        Pacifier.bind(this);
     }
 
 }
