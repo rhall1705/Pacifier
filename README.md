@@ -17,13 +17,13 @@ public class MyActivity extends AppCompatActivity {
   protected void onCreate(Bundle savedInstanceState {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.my_activity);
-    MyActivityExtras.bind(this);
+    Pacifier.bind(this);
   }
 
 }
 ```
 
-This will generate the helper class MyActivityExtras, which contains the bind method seen above that will populate the annotated extras with their values. Note that default values can be provided by simply assigning them to the member - if the argument is not provided, the default value will remain. The helper class also contains the following factory method that must be used to launch MyActivity:
+This will add the bind method seen above to the generated Pacifier class that will populate the annotated extras with their values. Note that default values can be provided by simply assigning them to the member - if the argument is not provided, the default value will remain. It will also generate a class called MyActivityExtras that contains the following factory method that must be used to launch MyActivity:
 
 ```
 public static Intent newIntent(Context context, String myStringExtra, int myIntegerExtra) {
@@ -36,7 +36,7 @@ public static Intent newIntent(Context context, String myStringExtra, int myInte
 
 The same thing can be done with the `@Argument` annotation in Fragments. Note that this will produce both an "args" and a "newInstance" method, in case you need just the bundle.
 
-Now, Dart & Henson generates builders, while Pacifier creates factory methods. I chose this route because it enforces a contract for instantiating an Activity/Fragment, preventing potential misuse that can lead to unintended behavior/crashes when not enough or too many arguments are supplied. However, this means we have to account for different entry paths into the Activity/Fragment with potentially differing arguments. To deal with this, we add an argument to our `@Extra` or `@Argument` annotations called "path". See below:
+Now, Dart & Henson generates builders, while Pacifier creates factory methods. I chose this route because it enforces a contract for instantiating an Activity/Fragment, preventing potential misuse that can lead to unintended behavior/crashes when not enough or too many arguments are supplied. However, this means we have to account for different entry paths into the Activity/Fragment with potentially differing arguments. To deal with this, we add an argument to our `@Extra` or `@Argument` annotations to represent the "path". See below:
 
 ```
 public class SampleFragment extends Fragment {
@@ -51,28 +51,28 @@ public class SampleFragment extends Fragment {
     @Argument
     double doubleArgument;
 
-    @Argument(path=SECOND_PATH)
+    @Argument(SECOND_PATH)
     int integerArgument;
 
-    @Argument(paths={SECOND_PATH, THIRD_PATH})
+    @Argument({SECOND_PATH, THIRD_PATH})
     int anotherIntArgument;
 
-    @Argument(path=THIRD_PATH)
+    @Argument(THIRD_PATH)
     String anotherStringArgument = "defaultValue";
 
-    @Argument(path=FOURTH_PATH)
+    @Argument(FOURTH_PATH)
     SomeObject objectArgument;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        SampleFragmentArguments.bind(this);
+        Pacifier.bind(this);
     }
 
 }
 ```
 
-If an argument is necessary to the Fragment no matter what, don't bother giving it an argument - it will be included in the parameters for all the factory methods. If an argument will only be in a single path, use `path="PathName"` as an argument. If it is in multiple paths, but not all of them, then use `paths={"PathName1", "PathName2"}`. The class above will generate the following class:
+If an argument is necessary to the Fragment no matter what, don't bother giving it an argument - it will be included in the parameters for all the factory methods. If an argument will only be in a single path, use a string `"PathName"` as an argument. If it is in multiple paths, but not all of them, then use an array `{"PathName1", "PathName2"}`. The class above will generate the following class:
 
 ```
 public class SampleFragmentArguments {
